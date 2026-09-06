@@ -21,6 +21,16 @@ for i in range(5):
         "traffic": traffic
     })
 
+
+# Network links
+link_load = {
+    "A-B": 0,
+    "A-C": 0,
+    "B-D": 0,
+    "C-D": 0
+}
+
+
 print("Traffic simulation started")
 print()
 
@@ -29,3 +39,9 @@ for request in traffic_requests:
         f"{request['source']} -> {request['destination']} : "
         f"{request['traffic']} units"
     )
+
+print()
+print("Link loads:")
+
+for link, load in link_load.items():
+    print(f"{link} : {load} units")
