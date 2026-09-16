@@ -1,38 +1,90 @@
-import numpy as np
-import pandas as pd #to read the csv file
-import matplotlib.pyplot as plt
+import pandas as pd
+from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from imblearn.over_sampling import RandomOverSampler
-
-pd.read_excel("/content/ADAPTINET_synthetic_network_dataset.csv")
-
-train,valid ,test = np.split(df.sample(frac=1),[int(0.6*len(df)),int(0.8*len(df))])
-
-def scale_dataset(dataframe, oversample=False):
-  x=dataframe[dataframe.columns[:-2]].values#first few rows (2D vector)
-  y=dataframe[dataframe.columns[-2]].values#last row (1D vector)
-
-  scaler=StandardScaler()
-  x=scaler.fit_transform(x)
-  #
-  if oversample:
-    ros=RandomOverSampler()
-    x,y=ros.fit_resample(x,y)
-
-  data=np.hstack((x,np.reshape(y,(-1,1))))
-
-  return data,x,y
-
-train , x_train , y_train = scale_dataset(train,oversample=True)
-valid , x_valid , y_valid = scale_dataset(valid,oversample=False)
-test , x_test , y_test = scale_dataset(test,oversample=False)
 
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from xgboost import XGBClassifier
 
+from sklearn.metrics import (
+    accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score,
+    confusion_matrix,
+    classification_report
+)
 
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
+
+DATA_FILE = "ADAPTINET_synthetic_network_dataset.xlsx"
+
+FEATURE_COLUMNS = [
+    "utilization_percent",
+    "latency_ms",
+    "packet_loss_percent",
+    "throughput_mbps",
+    "queue_occupancy_percent",
+    "packet_arrival_rate_pps"
+]
+
+TARGET_COLUMN = "congested"
+
+
+df = pd.read_excel(DATA_FILE)
+
+X = df[FEATURE_COLUMNS]
+y = df[TARGET_COLUMN]
+
+print("Dataset loaded successfully")
+print("Dataset shape:", df.shape)
+print("Features:", FEATURE_COLUMNS)
+print("Target:", TARGET_COLUMN)
+
+print("\nClass distribution:")
+print(y.value_counts())
+
+
+X_train, X_temp, y_train, y_temp = train_test_split(
+    X,
+    y,
+    test_size=0.40,
+    random_state=42,
+    stratify=y
+)
+
+X_valid, X_test, y_valid, y_test = train_test_split(
+    X_temp,
+    y_temp,
+    test_size=0.50,
+    random_state=42,
+    stratify=y_temp
+)
+
+
+print("\nDataset split:")
+print("Training:", X_train.shape)
+print("Validation:", X_valid.shape)
+print("Testing:", X_test.shape)
+
+
+scaler = StandardScaler()
+
+X_train_scaled = scaler.fit_transform(X_train)
+X_valid_scaled = scaler.transform(X_valid)
+X_test_scaled = scaler.transform(X_test)
+
+
+ros = RandomOverSampler(random_state=42)
+
+X_train_resampled, y_train_resampled = ros.fit_resample(
+    X_train_scaled,
+    y_train
+)
+
+print("\nTraining data after oversampling:")
+print(pd.Series(y_train_resampled).value_counts())
+
 
 models = {
 
@@ -55,11 +107,8 @@ models = {
 }
 
 
-# --------------------------------------------------
-# 5. TRAIN + EVALUATE EACH MODEL
-# --------------------------------------------------
-
 results = []
+
 
 for name, model in models.items():
 
@@ -67,19 +116,30 @@ for name, model in models.items():
     print(name)
     print("===================================")
 
-    # Train
-    model.fit(x_train, y_train)
+    model.fit(
+        X_train_resampled,
+        y_train_resampled
+    )
 
-    # Prediction
-    y_pred = model.predict(x_test)
+    y_valid_pred = model.predict(X_valid_scaled)
 
-    # Metrics
-    accuracy = accuracy_score(y_test, y_pred)
-    precision = precision_score(y_test, y_pred)
-    recall = recall_score(y_test, y_pred)
-    f1 = f1_score(y_test, y_pred)
+    accuracy = accuracy_score(y_valid, y_valid_pred)
+    precision = precision_score(
+        y_valid,
+        y_valid_pred,
+        zero_division=0
+    )
+    recall = recall_score(
+        y_valid,
+        y_valid_pred,
+        zero_division=0
+    )
+    f1 = f1_score(
+        y_valid,
+        y_valid_pred,
+        zero_division=0
+    )
 
-    # Store results
     results.append({
         "Model": name,
         "Accuracy": accuracy,
@@ -88,24 +148,23 @@ for name, model in models.items():
         "F1 Score": f1
     })
 
-    # Print metrics
-    print("Accuracy :", accuracy)
-    print("Precision:", precision)
-    print("Recall   :", recall)
-    print("F1 Score :", f1)
+    print("Validation Accuracy :", accuracy)
+    print("Validation Precision:", precision)
+    print("Validation Recall   :", recall)
+    print("Validation F1 Score :", f1)
 
-    # Confusion Matrix
-    print("\nConfusion Matrix:")
-    print(confusion_matrix(y_test, y_pred))
+    print("\nValidation Confusion Matrix:")
+    print(confusion_matrix(y_valid, y_valid_pred))
 
-    # Detailed report
-    print("\nClassification Report:")
-    print(classification_report(y_test, y_pred))
+    print("\nValidation Classification Report:")
+    print(
+        classification_report(
+            y_valid,
+            y_valid_pred,
+            zero_division=0
+        )
+    )
 
-
-# --------------------------------------------------
-# 6. COMPARE ALL MODELS
-# --------------------------------------------------
 
 results_df = pd.DataFrame(results)
 
@@ -113,42 +172,184 @@ print("\n\n========== MODEL COMPARISON ==========")
 print(results_df.to_string(index=False))
 
 
-# --------------------------------------------------
-# 7. FIND BEST MODEL
-# --------------------------------------------------
-
-best_model = results_df.loc[
-    results_df["F1 Score"].idxmax()
+best_model_name = results_df.loc[
+    results_df["F1 Score"].idxmax(),
+    "Model"
 ]
 
-print("\n========== BEST MODEL ==========")
-
-print("Model    :", best_model["Model"])
-print("Accuracy :", best_model["Accuracy"])
-print("Precision:", best_model["Precision"])
-print("Recall   :", best_model["Recall"])
-print("F1 Score :", best_model["F1 Score"])
+print("\n========== SELECTED MODEL ==========")
+print("Model:", best_model_name)
 
 
-# --------------------------------------------------
-# 8. CONGESTION PROBABILITY
-# --------------------------------------------------
+X_train_valid = pd.concat(
+    [X_train, X_valid]
+)
 
-print("\n========== CONGESTION PROBABILITY ==========")
+y_train_valid = pd.concat(
+    [y_train, y_valid]
+)
 
-# Example network link
-sample_link = pd.DataFrame([{
+
+final_scaler = StandardScaler()
+
+X_train_valid_scaled = final_scaler.fit_transform(
+    X_train_valid
+)
+
+X_test_final_scaled = final_scaler.transform(
+    X_test
+)
+
+
+final_ros = RandomOverSampler(
+    random_state=42
+)
+
+X_train_valid_resampled, y_train_valid_resampled = final_ros.fit_resample(
+    X_train_valid_scaled,
+    y_train_valid
+)
+
+
+final_model = models[best_model_name]
+
+final_model.fit(
+    X_train_valid_resampled,
+    y_train_valid_resampled
+)
+
+
+y_test_pred = final_model.predict(
+    X_test_final_scaled
+)
+
+
+test_accuracy = accuracy_score(
+    y_test,
+    y_test_pred
+)
+
+test_precision = precision_score(
+    y_test,
+    y_test_pred,
+    zero_division=0
+)
+
+test_recall = recall_score(
+    y_test,
+    y_test_pred,
+    zero_division=0
+)
+
+test_f1 = f1_score(
+    y_test,
+    y_test_pred,
+    zero_division=0
+)
+
+
+print("\n========== FINAL TEST RESULTS ==========")
+
+print("Accuracy :", test_accuracy)
+print("Precision:", test_precision)
+print("Recall   :", test_recall)
+print("F1 Score :", test_f1)
+
+print("\nTest Confusion Matrix:")
+print(
+    confusion_matrix(
+        y_test,
+        y_test_pred
+    )
+)
+
+print("\nTest Classification Report:")
+print(
+    classification_report(
+        y_test,
+        y_test_pred,
+        zero_division=0
+    )
+)
+
+
+def predict_congestion(link_data):
+
+    link_df = pd.DataFrame([link_data])
+
+    link_features = link_df[FEATURE_COLUMNS]
+
+    link_scaled = final_scaler.transform(
+        link_features
+    )
+
+    probability = final_model.predict_proba(
+        link_scaled
+    )[0][1]
+
+    prediction = int(
+        probability >= 0.5
+    )
+
+    return prediction, probability
+
+
+sample_link = {
     "utilization_percent": 90,
     "latency_ms": 80,
     "packet_loss_percent": 5,
     "throughput_mbps": 50,
     "queue_occupancy_percent": 85,
     "packet_arrival_rate_pps": 900
-}])
+}
 
-# Use XGBoost here as an example
-xgb_model = models["XGBoost"]
 
-probability = xgb_model.predict_proba(sample_link)[0][1]
+prediction, probability = predict_congestion(
+    sample_link
+)
 
+print("\n========== CONGESTION PREDICTION ==========")
+
+print("Predicted congestion:", prediction)
+print("Probability of congestion:", probability)
+
+
+def predict_congestion(link_data):
+
+    link_df = pd.DataFrame([link_data])
+
+    link_features = link_df[FEATURE_COLUMNS]
+
+    link_scaled = scaler.transform(
+        link_features
+    )
+
+    probability = final_model.predict_proba(
+        link_scaled
+    )[0][1]
+
+    prediction = int(
+        probability >= 0.5
+    )
+
+    return prediction, probability
+
+
+sample_link = {
+    "utilization_percent": 90,
+    "latency_ms": 80,
+    "packet_loss_percent": 5,
+    "throughput_mbps": 50,
+    "queue_occupancy_percent": 85,
+    "packet_arrival_rate_pps": 900
+}
+
+
+prediction, probability = predict_congestion(
+    sample_link
+)
+
+print("\n========== CONGESTION PREDICTION ==========")
+
+print("Predicted congestion:", prediction)
 print("Probability of congestion:", probability)
