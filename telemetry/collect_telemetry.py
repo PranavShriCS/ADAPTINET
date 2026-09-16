@@ -66,7 +66,7 @@ telemetry = collect_telemetry(links)
 
 save_telemetry(
     telemetry,
-    "../data/telemetry.csv"
+    "data/telemetry.csv"
 )
 
 print("Telemetry collected successfully")
