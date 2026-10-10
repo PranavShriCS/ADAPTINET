@@ -1,21 +1,15 @@
 
+from pathlib import Path
+import json
+import joblib
 import pandas as pd
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-from imblearn.over_sampling import RandomOverSampler
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.ensemble import RandomForestClassifier
-from xgboost import XGBClassifier
-from sklearn.metrics import (
-    accuracy_score,
-    precision_score,
-    recall_score,
-    f1_score,
-    confusion_matrix,
-    classification_report
-)
 
-DATA_FILE = "ADAPTINET_synthetic_network_dataset.xlsx"
+BASE_DIR = Path(__file__).resolve().parent
+MODEL_DIR = BASE_DIR / "models"
+
+MODEL_FILE = MODEL_DIR / "congestion_model.joblib"
+SCALER_FILE = MODEL_DIR / "congestion_scaler.joblib"
+INFO_FILE = MODEL_DIR / "model_info.json"
 
 FEATURE_COLUMNS = [
     "utilization_percent",
@@ -26,184 +20,14 @@ FEATURE_COLUMNS = [
     "packet_arrival_rate_pps"
 ]
 
-TARGET_COLUMN = "congested"
-
-df = pd.read_excel(DATA_FILE)
-
-X = df[FEATURE_COLUMNS]
-y = df[TARGET_COLUMN]
-
-print("Dataset loaded successfully")
-print("Dataset shape:", df.shape)
-print("Features:", FEATURE_COLUMNS)
-print("Target:", TARGET_COLUMN)
-
-print("\nClass distribution:")
-print(y.value_counts())
-
-X_train, X_temp, y_train, y_temp = train_test_split(
-    X, y,
-    test_size=0.40,
-    random_state=42,
-    stratify=y
-)
-
-X_valid, X_test, y_valid, y_test = train_test_split(
-    X_temp, y_temp,
-    test_size=0.50,
-    random_state=42,
-    stratify=y_temp
-)
-
-print("\nDataset split:")
-print("Training:", X_train.shape)
-print("Validation:", X_valid.shape)
-print("Testing:", X_test.shape)
-
-scaler = StandardScaler()
-
-X_train_scaled = scaler.fit_transform(X_train)
-X_valid_scaled = scaler.transform(X_valid)
-
-ros = RandomOverSampler(random_state=42)
-
-X_train_resampled, y_train_resampled = ros.fit_resample(
-    X_train_scaled, y_train
-)
-
-print("\nTraining data after oversampling:")
-print(pd.Series(y_train_resampled).value_counts())
-
-models = {
-    "Decision Tree": DecisionTreeClassifier(
-        random_state=42
-    ),
-    "Random Forest": RandomForestClassifier(
-        n_estimators=100,
-        random_state=42
-    ),
-    "XGBoost": XGBClassifier(
-        n_estimators=100,
-        max_depth=4,
-        learning_rate=0.1,
-        random_state=42,
-        eval_metric="logloss"
-    )
-}
-
-results = []
-
-for name, model in models.items():
-    print("\n===================================")
-    print(name)
-    print("===================================")
-
-    model.fit(X_train_resampled, y_train_resampled)
-
-    y_valid_pred = model.predict(X_valid_scaled)
-
-    accuracy = accuracy_score(y_valid, y_valid_pred)
-    precision = precision_score(
-        y_valid, y_valid_pred, zero_division=0
-    )
-    recall = recall_score(
-        y_valid, y_valid_pred, zero_division=0
-    )
-    f1 = f1_score(
-        y_valid, y_valid_pred, zero_division=0
+if not MODEL_FILE.exists() or not SCALER_FILE.exists():
+    raise FileNotFoundError(
+        "Trained model not found. Run train_model.py first."
     )
 
-    results.append({
-        "Model": name,
-        "Accuracy": accuracy,
-        "Precision": precision,
-        "Recall": recall,
-        "F1 Score": f1
-    })
+final_model = joblib.load(MODEL_FILE)
+final_scaler = joblib.load(SCALER_FILE)
 
-    print("Validation Accuracy :", accuracy)
-    print("Validation Precision:", precision)
-    print("Validation Recall   :", recall)
-    print("Validation F1 Score :", f1)
-
-    print("\nValidation Confusion Matrix:")
-    print(confusion_matrix(y_valid, y_valid_pred))
-
-    print("\nValidation Classification Report:")
-    print(
-        classification_report(
-            y_valid, y_valid_pred, zero_division=0
-        )
-    )
-
-results_df = pd.DataFrame(results)
-
-print("\n========== MODEL COMPARISON ==========")
-print(results_df.to_string(index=False))
-
-best_model_name = results_df.loc[
-    results_df["F1 Score"].idxmax(),
-    "Model"
-]
-
-print("\n========== SELECTED MODEL ==========")
-print("Model:", best_model_name)
-
-X_train_valid = pd.concat([X_train, X_valid])
-y_train_valid = pd.concat([y_train, y_valid])
-
-final_scaler = StandardScaler()
-
-X_train_valid_scaled = final_scaler.fit_transform(
-    X_train_valid
-)
-
-X_test_final_scaled = final_scaler.transform(X_test)
-
-final_ros = RandomOverSampler(random_state=42)
-
-X_train_valid_resampled, y_train_valid_resampled = (
-    final_ros.fit_resample(
-        X_train_valid_scaled,
-        y_train_valid
-    )
-)
-
-final_model = models[best_model_name]
-
-final_model.fit(
-    X_train_valid_resampled,
-    y_train_valid_resampled
-)
-
-y_test_pred = final_model.predict(X_test_final_scaled)
-
-test_accuracy = accuracy_score(y_test, y_test_pred)
-test_precision = precision_score(
-    y_test, y_test_pred, zero_division=0
-)
-test_recall = recall_score(
-    y_test, y_test_pred, zero_division=0
-)
-test_f1 = f1_score(
-    y_test, y_test_pred, zero_division=0
-)
-
-print("\n========== FINAL TEST RESULTS ==========")
-print("Accuracy :", test_accuracy)
-print("Precision:", test_precision)
-print("Recall   :", test_recall)
-print("F1 Score :", test_f1)
-
-print("\nTest Confusion Matrix:")
-print(confusion_matrix(y_test, y_test_pred))
-
-print("\nTest Classification Report:")
-print(
-    classification_report(
-        y_test, y_test_pred, zero_division=0
-    )
-)
 
 def predict_congestion(link_data):
     link_df = pd.DataFrame([link_data])
@@ -211,13 +35,22 @@ def predict_congestion(link_data):
 
     link_scaled = final_scaler.transform(link_features)
 
-    probability = final_model.predict_proba(
-        link_scaled
-    )[0][1]
+    probability = float(
+        final_model.predict_proba(link_scaled)[0][1]
+    )
 
     prediction = int(probability >= 0.5)
 
     return prediction, probability
+
+
+def get_congestion_level(probability):
+    if probability < 0.50:
+        return "Nil"
+    elif probability < 0.80:
+        return "Moderate"
+    else:
+        return "High"
 
 
 if __name__ == "__main__":
@@ -234,4 +67,12 @@ if __name__ == "__main__":
 
     print("\n========== CONGESTION PREDICTION ==========")
     print("Predicted congestion:", prediction)
-    print("Probability of congestion:", probability)
+    print("Probability:", f"{probability * 100:.2f}%")
+    print("Congestion level:", get_congestion_level(probability))
+
+    if INFO_FILE.exists():
+        with open(INFO_FILE, "r", encoding="utf-8") as file:
+            info = json.load(file)
+
+        print("Selected model:", info["selected_model"])
+        print("Test accuracy:", info["test_accuracy"])

@@ -1,223 +1,224 @@
 
-import math
+from routing.engine import run_adaptinet
 
-from routing.engine import run_adaptinet, FEATURES
+FEATURES = [
+    ("utilization_percent", "Utilization (%)"),
+    ("latency_ms", "Latency (ms)"),
+    ("packet_loss_percent", "Packet loss (%)"),
+    ("throughput_mbps", "Throughput (Mbps)"),
+    ("queue_occupancy_percent", "Queue occupancy (%)"),
+    ("packet_arrival_rate_pps", "Packet arrival rate (pps)")
+]
 
 
-def get_number(prompt, minimum=0, maximum=None):
+def read_int(prompt, minimum=None, maximum=None):
     while True:
         try:
-            value = float(input(prompt))
+            value = int(input(prompt))
 
-            if not math.isfinite(value):
-                raise ValueError
-
-            if value < minimum:
-                raise ValueError
+            if minimum is not None and value < minimum:
+                print(f"Enter a value >= {minimum}.")
+                continue
 
             if maximum is not None and value > maximum:
-                raise ValueError
+                print(f"Enter a value <= {maximum}.")
+                continue
 
             return value
 
         except ValueError:
-            print("Invalid number. Please try again.")
+            print("Please enter a valid integer.")
 
 
-def get_integer(prompt, minimum=1, maximum=None):
+def read_float(prompt, minimum=None, maximum=None):
     while True:
-        value = get_number(prompt, minimum, maximum)
+        try:
+            value = float(input(prompt))
 
-        if value.is_integer():
-            return int(value)
+            if value != value or value in (float("inf"), float("-inf")):
+                print("Enter a finite number.")
+                continue
 
-        print("Please enter a whole number.")
+            if minimum is not None and value < minimum:
+                print(f"Enter a value >= {minimum}.")
+                continue
+
+            if maximum is not None and value > maximum:
+                print(f"Enter a value <= {maximum}.")
+                continue
+
+            return value
+
+        except ValueError:
+            print("Please enter a valid number.")
 
 
-def get_node(prompt, network):
-    while True:
-        node = input(prompt).strip().upper()
+def collect_nodes():
+    count = read_int("\nNumber of nodes: ", minimum=2)
+    nodes = []
 
-        if node in network:
-            return node
-
-        print("Invalid node. Available nodes:",
-              ", ".join(network))
-
-
-def create_network():
-    print("\n========== NETWORK CONFIGURATION ==========")
-
-    node_count = get_integer(
-        "Enter number of nodes: ",
-        minimum=2
-    )
-
-    network = {}
-
-    for i in range(node_count):
+    for i in range(count):
         while True:
-            node = input(
-                f"Enter name of node {i + 1}: "
-            ).strip().upper()
+            node = input(f"Name of node {i + 1}: ").strip()
 
             if not node:
                 print("Node name cannot be empty.")
-                continue
-
-            if node in network:
+            elif node in nodes:
                 print("Node already exists.")
-                continue
+            else:
+                nodes.append(node)
+                break
 
-            network[node] = {}
-            break
+    return nodes
 
-    maximum_links = node_count * (node_count - 1) // 2
 
-    link_count = get_integer(
-        "Enter number of links: ",
+def collect_links(nodes):
+    maximum_links = len(nodes) * (len(nodes) - 1) // 2
+
+    count = read_int(
+        "\nNumber of links: ",
         minimum=1,
         maximum=maximum_links
     )
 
+    network = {node: {} for node in nodes}
     links = []
 
-    for i in range(link_count):
-        print(f"\n----- Link {i + 1} -----")
+    for i in range(count):
+        print(f"\n--- Link {i + 1} ---")
 
         while True:
-            node1 = get_node("First node: ", network)
-            node2 = get_node("Second node: ", network)
+            source = input("First node: ").strip()
+            destination = input("Second node: ").strip()
 
-            if node1 == node2:
-                print("A link must connect two different nodes.")
-                continue
-
-            if node2 in network[node1]:
+            if source not in network or destination not in network:
+                print("Both nodes must exist.")
+            elif source == destination:
+                print("A link must connect different nodes.")
+            elif destination in network[source]:
                 print("This link already exists.")
-                continue
+            else:
+                break
 
-            break
-
-        cost = get_number(
-            "Enter original link cost: ",
-            minimum=0
+        cost = read_float(
+            "Original link cost: ",
+            minimum=0.000001
         )
 
-        network[node1][node2] = cost
-        network[node2][node1] = cost
+        network[source][destination] = cost
+        network[destination][source] = cost
 
-        links.append((node1, node2))
+        links.append((source, destination))
 
     return network, links
 
 
 def collect_telemetry(links):
-    print("\n========== TELEMETRY INPUT ==========")
-
     telemetry = {}
 
-    percentage_features = {
-        "utilization_percent",
-        "packet_loss_percent",
-        "queue_occupancy_percent"
-    }
+    print("\n========== NETWORK TELEMETRY ==========")
 
-    for node1, node2 in links:
-        print(f"\n----- Link {node1} <-> {node2} -----")
+    for source, destination in links:
+        print(f"\nEnter telemetry for {source} - {destination}")
 
-        values = {}
+        measurements = {}
 
-        for feature in FEATURES:
-            maximum = (
-                100 if feature in percentage_features else None
-            )
+        for feature, label in FEATURES:
+            maximum = 100 if feature in (
+                "utilization_percent",
+                "packet_loss_percent",
+                "queue_occupancy_percent"
+            ) else None
 
-            values[feature] = get_number(
-                f"Enter {feature}: ",
+            measurements[feature] = read_float(
+                f"{label}: ",
                 minimum=0,
                 maximum=maximum
             )
 
-        telemetry[frozenset((node1, node2))] = values
+        telemetry[frozenset((source, destination))] = measurements
 
     return telemetry
 
 
-def show_results(results):
+def choose_endpoints(nodes):
+    print("\nAvailable nodes:", ", ".join(nodes))
+
+    while True:
+        source = input("Source node: ").strip()
+        destination = input("Destination node: ").strip()
+
+        if source not in nodes or destination not in nodes:
+            print("Please select existing nodes.")
+        elif source == destination:
+            print("Source and destination must be different.")
+        else:
+            return source, destination
+
+
+def format_path(path):
+    return " -> ".join(map(str, path)) if path else "No path found"
+
+
+def show_results(result):
     print("\n========== ML CONGESTION PREDICTIONS ==========")
 
-    for item in results["predictions"]:
-        print("\nLink:", item["link"])
-        print("Congestion prediction:", item["prediction"])
-        print(
-            "Congestion probability:",
-            round(item["probability"], 4)
-        )
-        print("Original cost:", item["original_cost"])
-        print(
-            "Updated cost:",
-            round(item["updated_cost"], 4)
-        )
+    for item in result["predictions"]:
+        link = item["link"]
+
+        if isinstance(link, (tuple, list, set, frozenset)):
+            link = " - ".join(map(str, link))
+
+        congestion = "YES" if item["prediction"] == 1 else "NO"
+
+        print(f"\nLink: {link}")
+        print("Congestion:", congestion)
+        print(f"Original cost: {item['original_cost']:.2f}")
+        print(f"Updated cost: {item['updated_cost']:.2f}")
 
     print("\n========== ROUTING COMPARISON ==========")
 
-    conventional_path = results["conventional_path"]
-    adaptive_path = results["adaptive_path"]
+    print("\nConventional Dijkstra:")
+    print("Path:", format_path(result["conventional_path"]))
+    print(f"Cost: {result['conventional_cost']:.2f}")
 
-    if not conventional_path or not adaptive_path:
-        print("No route exists between the selected nodes.")
-        return
+    print("\nML-Assisted Adaptive Routing:")
+    print("Path:", format_path(result["adaptive_path"]))
+    print(f"Adjusted cost: {result['adaptive_cost']:.2f}")
 
-    print("\nConventional routing:")
-    print("Path:", " -> ".join(conventional_path))
-    print("Cost:", results["conventional_cost"])
+    if not result["conventional_path"] or not result["adaptive_path"]:
+        print("\nRESULT: No available route between the selected nodes.")
 
-    print("\nAI-assisted adaptive routing:")
-    print("Path:", " -> ".join(adaptive_path))
-    print(
-        "Adjusted cost:",
-        round(results["adaptive_cost"], 4)
-    )
+    elif result["route_changed"]:
+        print("\nRESULT: Routing path changed due to congestion predictions.")
 
-    if results["route_changed"]:
-        print("\nRESULT: Routing path changed")
     else:
-        print("\nRESULT: Routing path remained unchanged")
+        print("\nRESULT: Routing path remained unchanged.")
+
+    print("=" * 60)
 
 
 def main():
-    while True:
-        print("\n======================================")
-        print("             ADAPTINET")
-        print(" AI-Based Adaptive Network Routing")
-        print("======================================")
+    print("=" * 60)
+    print("ADAPTINET - ML-ASSISTED ADAPTIVE ROUTING")
+    print("=" * 60)
 
-        network, links = create_network()
+    while True:
+        nodes = collect_nodes()
+
+        network, links = collect_links(nodes)
+
         telemetry = collect_telemetry(links)
 
-        alpha = get_number(
-            "\nEnter congestion penalty coefficient: ",
+        alpha = read_float(
+            "\nCongestion penalty (alpha): ",
             minimum=0
         )
 
-        print("\nAvailable nodes:", ", ".join(network))
-
-        source = get_node("Enter source node: ", network)
-
-        while True:
-            destination = get_node(
-                "Enter destination node: ",
-                network
-            )
-
-            if destination != source:
-                break
-
-            print("Source and destination must be different.")
+        source, destination = choose_endpoints(nodes)
 
         try:
-            results = run_adaptinet(
+            result = run_adaptinet(
                 network,
                 telemetry,
                 source,
@@ -225,9 +226,9 @@ def main():
                 alpha
             )
 
-            show_results(results)
+            show_results(result)
 
-        except ValueError as error:
+        except Exception as error:
             print("\nError:", error)
 
         again = input(
