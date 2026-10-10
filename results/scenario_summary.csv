@@ -1,4 +1,0 @@
-scenario,baseline_path,baseline_cost,adaptive_path,adaptive_cost,route_changed
-Normal Traffic,A -> B -> D,4,A -> B -> D,4.0,NO
-Moderate Congestion,A -> B -> D,4,A -> C -> D,6.0,YES
-Heavy Congestion,A -> B -> D,4,A -> C -> D,6.0,YES
