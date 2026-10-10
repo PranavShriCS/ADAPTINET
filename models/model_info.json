@@ -1,0 +1,15 @@
+{
+    "selected_model": "Decision Tree",
+    "feature_columns": [
+        "utilization_percent",
+        "latency_ms",
+        "packet_loss_percent",
+        "throughput_mbps",
+        "queue_occupancy_percent",
+        "packet_arrival_rate_pps"
+    ],
+    "test_accuracy": 0.765,
+    "test_precision": 0.7777777777777778,
+    "test_recall": 0.7386934673366834,
+    "test_f1": 0.7577319587628866
+}

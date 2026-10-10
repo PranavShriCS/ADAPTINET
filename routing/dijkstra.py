@@ -48,25 +48,25 @@ def dijkstra(network, start, destination):
 
     return path, distances[destination]
 
-
+if __name__ == "__main__":
 # Normal network
-path, cost = dijkstra(network, "A", "D")
+    path, cost = dijkstra(network, "A", "D")
 
-print("Normal network:")
-print("Shortest path:", " -> ".join(path))
-print("Total cost:", cost)
+    print("Normal network:")
+    print("Shortest path:", " -> ".join(path))
+    print("Total cost:", cost)
 
 
-# Congested network
-congested_network = {
-    "A": {"B": 2, "C": 3},
-    "B": {"A": 2, "D": 8},
-    "C": {"A": 3, "D": 3},
-    "D": {"B": 8, "C": 3}
-}
+    # Congested network
+    congested_network = {
+        "A": {"B": 2, "C": 3},
+        "B": {"A": 2, "D": 8},
+        "C": {"A": 3, "D": 3},
+        "D": {"B": 8, "C": 3}
+    }
 
-path, cost = dijkstra(congested_network, "A", "D")
+    path, cost = dijkstra(congested_network, "A", "D")
 
-print("\nAfter B-D congestion:")
-print("Shortest path:", " -> ".join(path))
-print("Total cost:", cost)
+    print("\nAfter B-D congestion:")
+    print("Shortest path:", " -> ".join(path))
+    print("Total cost:", cost)
