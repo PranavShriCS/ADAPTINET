@@ -1,8 +1,9 @@
 
 from app import predict_congestion
 from routing.dijkstra import dijkstra
+import csv
+import os
 
-# Original network costs
 network = {
     "A": {"B": 2, "C": 3},
     "B": {"A": 2, "D": 2},
@@ -10,74 +11,160 @@ network = {
     "D": {"B": 2, "C": 3}
 }
 
-# Simulated link telemetry
-telemetry = {
-    "A-B": [30, 10, 0, 90, 20, 200],
-    "B-D": [90, 80, 5, 50, 85, 900],
-    "A-C": [25, 12, 0, 88, 15, 180],
-    "C-D": [40, 18, 1, 80, 30, 300]
-}
+FEATURES = [
+    "utilization_percent",
+    "latency_ms",
+    "packet_loss_percent",
+    "throughput_mbps",
+    "queue_occupancy_percent",
+    "packet_arrival_rate_pps"
+]
 
 alpha = 6
 
-print("\n========== ADAPTINET INTEGRATION ==========")
+# All values below are simulated test inputs.
+scenarios = {
+    "Normal Traffic": {
+        "A-B": [20, 8, 0, 95, 10, 100],
+        "B-D": [25, 10, 0, 90, 15, 150],
+        "A-C": [20, 9, 0, 92, 12, 120],
+        "C-D": [25, 10, 0, 90, 15, 150]
+    },
 
-# Conventional shortest path
-normal_path, normal_cost = dijkstra(network, "A", "D")
+    "Moderate Congestion": {
+        "A-B": [30, 10, 0, 90, 20, 200],
+        "B-D": [65, 40, 2, 65, 60, 600],
+        "A-C": [20, 8, 0, 95, 10, 100],
+        "C-D": [20, 8, 0, 95, 10, 100]
+    },
 
-print("\nConventional Routing")
-print("Path:", " -> ".join(normal_path))
-print("Cost:", normal_cost)
-
-# Adjust costs using ML predictions
-adaptive_network = {
-    node: neighbours.copy()
-    for node, neighbours in network.items()
+    "Heavy Congestion": {
+        "A-B": [30, 10, 0, 90, 20, 200],
+        "B-D": [95, 100, 8, 30, 95, 1200],
+        "A-C": [15, 5, 0, 98, 5, 80],
+        "C-D": [15, 5, 0, 98, 5, 80]
+    }
 }
 
-for link, values in telemetry.items():
 
-    link_data = {
-        "utilization_percent": values[0],
-        "latency_ms": values[1],
-        "packet_loss_percent": values[2],
-        "throughput_mbps": values[3],
-        "queue_occupancy_percent": values[4],
-        "packet_arrival_rate_pps": values[5]
+def test_scenario(name, telemetry):
+    print("\n========================================")
+    print("SCENARIO:", name)
+    print("========================================")
+
+    baseline_path, baseline_cost = dijkstra(
+        network, "A", "D"
+    )
+
+    adaptive_network = {
+        node: neighbours.copy()
+        for node, neighbours in network.items()
     }
 
-    prediction, probability = predict_congestion(link_data)
+    link_results = []
 
-    node1, node2 = link.split("-")
+    for link, values in telemetry.items():
+        link_data = dict(zip(FEATURES, values))
 
-    original_cost = network[node1][node2]
-    updated_cost = original_cost + alpha * probability
+        prediction, probability = predict_congestion(
+            link_data
+        )
 
-    adaptive_network[node1][node2] = updated_cost
-    adaptive_network[node2][node1] = updated_cost
+        node1, node2 = link.split("-")
 
-    print(f"\nLink: {link}")
-    print(f"Congestion prediction: {prediction}")
-    print(f"Congestion probability: {probability:.4f}")
-    print(f"Original cost: {original_cost}")
-    print(f"Updated cost: {updated_cost:.4f}")
+        original_cost = network[node1][node2]
+        updated_cost = original_cost + alpha * probability
 
-# Adaptive shortest path
-adaptive_path, adaptive_cost = dijkstra(
-    adaptive_network, "A", "D"
-)
+        adaptive_network[node1][node2] = updated_cost
+        adaptive_network[node2][node1] = updated_cost
 
-print("\n========== ROUTING COMPARISON ==========")
+        print("\nLink:", link)
+        print("Prediction:", prediction)
+        print("Probability:", round(probability, 4))
+        print("Original cost:", original_cost)
+        print("Updated cost:", round(updated_cost, 4))
 
-print("\nConventional routing:")
-print("Path:", " -> ".join(normal_path))
-print("Cost:", normal_cost)
+        link_results.append({
+            "scenario": name,
+            "link": link,
+            "prediction": prediction,
+            "probability": round(float(probability), 4),
+            "original_cost": original_cost,
+            "updated_cost": round(float(updated_cost), 4)
+        })
 
-print("\nAI-assisted adaptive routing:")
-print("Path:", " -> ".join(adaptive_path))
-print("Adjusted cost:", round(adaptive_cost, 4))
+    adaptive_path, adaptive_cost = dijkstra(
+        adaptive_network, "A", "D"
+    )
 
-if normal_path != adaptive_path:
-    print("\nRESULT: Routing path changed due to ML-based costs")
-else:
-    print("\nRESULT: Routing path remained unchanged")
+    print("\n----- ROUTING COMPARISON -----")
+    print("Conventional path:", " -> ".join(baseline_path))
+    print("Conventional cost:", baseline_cost)
+    print("Adaptive path:", " -> ".join(adaptive_path))
+    print("Adaptive cost:", round(adaptive_cost, 4))
+
+    changed = baseline_path != adaptive_path
+
+    print("Route changed:", "YES" if changed else "NO")
+
+    summary = {
+        "scenario": name,
+        "baseline_path": " -> ".join(baseline_path),
+        "baseline_cost": baseline_cost,
+        "adaptive_path": " -> ".join(adaptive_path),
+        "adaptive_cost": round(float(adaptive_cost), 4),
+        "route_changed": "YES" if changed else "NO"
+    }
+
+    return summary, link_results
+
+
+os.makedirs("results", exist_ok=True)
+
+summary_results = []
+all_link_results = []
+
+for name, telemetry in scenarios.items():
+    summary, links = test_scenario(name, telemetry)
+
+    summary_results.append(summary)
+    all_link_results.extend(links)
+
+
+with open(
+    "results/scenario_summary.csv",
+    "w",
+    newline=""
+) as file:
+    writer = csv.DictWriter(
+        file,
+        fieldnames=summary_results[0].keys()
+    )
+    writer.writeheader()
+    writer.writerows(summary_results)
+
+
+with open(
+    "results/link_predictions.csv",
+    "w",
+    newline=""
+) as file:
+    writer = csv.DictWriter(
+        file,
+        fieldnames=all_link_results[0].keys()
+    )
+    writer.writeheader()
+    writer.writerows(all_link_results)
+
+
+print("\n========================================")
+print("FINAL SCENARIO SUMMARY")
+print("========================================")
+
+for result in summary_results:
+    print("\nScenario:", result["scenario"])
+    print("Baseline:", result["baseline_path"])
+    print("Adaptive:", result["adaptive_path"])
+    print("Route changed:", result["route_changed"])
+
+print("\nResults saved in results/ folder")

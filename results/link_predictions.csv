@@ -1,0 +1,13 @@
+scenario,link,prediction,probability,original_cost,updated_cost
+Normal Traffic,A-B,0,0.0,2,2.0
+Normal Traffic,B-D,0,0.0,2,2.0
+Normal Traffic,A-C,0,0.0,3,3.0
+Normal Traffic,C-D,0,0.0,3,3.0
+Moderate Congestion,A-B,0,0.0,2,2.0
+Moderate Congestion,B-D,1,1.0,2,8.0
+Moderate Congestion,A-C,0,0.0,3,3.0
+Moderate Congestion,C-D,0,0.0,3,3.0
+Heavy Congestion,A-B,0,0.0,2,2.0
+Heavy Congestion,B-D,1,1.0,2,8.0
+Heavy Congestion,A-C,0,0.0,3,3.0
+Heavy Congestion,C-D,0,0.0,3,3.0
